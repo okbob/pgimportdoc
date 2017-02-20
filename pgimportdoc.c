@@ -22,7 +22,6 @@
 
 #define BUFSIZE			1024
 
-
 enum trivalue
 {
 	TRI_DEFAULT,
@@ -47,6 +46,8 @@ struct _param
 	int			verbose;
 	enum format fmt;
 	char	   *command;
+	bool		use_stdin;
+	char	   *filename;
 };
 
 static void usage(const char *progname);
@@ -60,6 +61,9 @@ pgimportdoc(const char *database, const struct _param * param)
 	bool		new_pass;
 	static bool have_password = false;
 	static char password[100];
+	FILE	   *input;
+	char		buffer[BUFSIZE];
+	size_t		size;
 
 	/* Note: password can be carried over from a previous call */
 	if (param->pg_prompt == TRI_YES && !have_password)
@@ -137,6 +141,33 @@ pgimportdoc(const char *database, const struct _param * param)
 			fprintf(stdout, "Import BYTEA document\n");
 	}
 
+	if (param->use_stdin)
+	{
+		input = stdin;
+	}
+	else
+	{
+		input = fopen(param->filename,"rb");
+		if (NULL == input)
+		{
+			fprintf(stderr, "Unable to open '%s': %s\n",
+				param->filename, strerror(errno));
+			PQfinish(conn);
+			return -1;
+		}
+	}
+
+	while ((size = fread(buffer, 1, sizeof(buffer), input)) > 0)
+		fwrite(buffer, 1, size, stdout);
+
+	if (ferror(input))
+	{
+		fprintf(stderr, "Cannot read data '%s': %s\n",
+				param->filename, strerror(errno));
+		PQfinish(conn);
+		return -1;
+	}
+
 	PQfinish(conn);
 
 	return 0;
@@ -152,6 +183,7 @@ usage(const char *progname)
 	printf("  -?, --help     show this help, then exit\n");
 	printf("  -v             write a lot of progress messages\n");
 	printf("  -c sqlcmd      INSERT command with parameter\n");
+	printf("  -f file        file name of imported document, default is stdin\n");
 	printf("  -t type        type specification [ XML | TEXT | BYTEA ], default is TEXT\n");
 	printf("\nConnection options:\n");
 	printf("  -h HOSTNAME    database server host or socket directory\n");
@@ -162,7 +194,6 @@ usage(const char *progname)
 	printf("\n");
 	printf("Report bugs to <pavel.stehule@gmail.com>.\n");
 }
-
 
 int
 main(int argc, char **argv)
@@ -182,6 +213,9 @@ main(int argc, char **argv)
 	param.pg_host = NULL;
 	param.pg_port = NULL;
 	param.progname = progname;
+	param.use_stdin = true;
+	param.filename = NULL;
+	param.command = NULL;
 
 	/* Process command-line arguments */
 	if (argc > 1)
@@ -200,7 +234,7 @@ main(int argc, char **argv)
 
 	while (1)
 	{
-		c = getopt(argc, argv, "h:l:U:p:c:t:vwW");
+		c = getopt(argc, argv, "h:f:U:p:c:t:vwW");
 		if (c == -1)
 			break;
 
@@ -216,6 +250,13 @@ main(int argc, char **argv)
 				break;
 			case 'c':
 				param.command = pg_strdup(optarg);
+				break;
+			case 'f':
+				if (strcmp(optarg, "-") != 0)
+				{
+					param.filename = pg_strdup(optarg);
+					param.use_stdin = false;
+				}
 				break;
 			case 't':
 				if (strcmp(optarg, "XML") == 0)
@@ -254,6 +295,13 @@ main(int argc, char **argv)
 				param.pg_host = pg_strdup(optarg);
 				break;
 		}
+	}
+
+	if (param.command == NULL)
+	{
+		fprintf(stderr, "pgimportdoc: missing required argument: -c command\n");
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+		exit(1);
 	}
 
 	/* No database given? Show usage */
