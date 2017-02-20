@@ -19,6 +19,9 @@
 
 #include "libpq-fe.h"
 #include "pg_getopt.h"
+#include "pqexpbuffer.h"
+
+#include "catalog/pg_type.h"
 
 #define BUFSIZE			1024
 
@@ -64,6 +67,13 @@ pgimportdoc(const char *database, const struct _param * param)
 	FILE	   *input;
 	char		buffer[BUFSIZE];
 	size_t		size;
+	PQExpBufferData data;
+	PGresult	*result = NULL;
+	Oid			ptypes[10];
+	int			pformats[10];
+	const char * pvalues[10];
+	int			plengths[10];
+	ExecStatusType status;
 
 	/* Note: password can be carried over from a previous call */
 	if (param->pg_prompt == TRI_YES && !have_password)
@@ -147,27 +157,107 @@ pgimportdoc(const char *database, const struct _param * param)
 	}
 	else
 	{
+		struct stat		fst;
+
+		canonicalize_path(param->filename);
+
 		input = fopen(param->filename,"rb");
 		if (NULL == input)
 		{
-			fprintf(stderr, "Unable to open '%s': %s\n",
-				param->filename, strerror(errno));
+			fprintf(stderr, "%s: Unable to open '%s': %s\n",
+				param->progname, param->filename, strerror(errno));
+			PQfinish(conn);
+			return -1;
+		}
+
+		if (fstat(fileno(input), &fst) != -1)
+		{
+			if (S_ISREG(fst.st_mode) && fst.st_size > ((int64) 1024) * 1024 * 1024)
+			{
+				fprintf(stderr, "%s: '%s' is too big (greather than 1GB)\n",
+					param->progname, param->filename);
+				PQfinish(conn);
+				return -1;
+			}
+		}
+		else
+		{
+			fprintf(stderr, "%s: %s\n",
+				param->progname, strerror(errno));
 			PQfinish(conn);
 			return -1;
 		}
 	}
 
+	initPQExpBuffer(&data);
+
 	while ((size = fread(buffer, 1, sizeof(buffer), input)) > 0)
-		fwrite(buffer, 1, size, stdout);
+		appendBinaryPQExpBuffer(&data, buffer, size);
 
 	if (ferror(input))
 	{
-		fprintf(stderr, "Cannot read data '%s': %s\n",
-				param->filename, strerror(errno));
+		fprintf(stderr, "%s: Cannot read data '%s': %s\n",
+				param->progname, param->filename, strerror(errno));
+		PQfinish(conn);
+		return -1;
+	}
+	else if (PQExpBufferBroken(&data))
+	{
+		fprintf(stderr, "%s: Out of memory\n",
+				param->progname);
 		PQfinish(conn);
 		return -1;
 	}
 
+	fclose(input);
+
+	if (param->verbose)
+	{
+		fprintf(stdout, "Buffered data of size: %ld\n", data.len);
+	}
+
+	if (param->fmt == FORMAT_XML || param->fmt == FORMAT_BYTEA)
+	{
+		ptypes[0] = param->fmt == FORMAT_XML ? XMLOID : BYTEAOID;
+		plengths[0] = data.len;
+		pformats[0] = 1;
+		pvalues[0] = data.data;
+
+		result = PQexecParams(conn,
+								param->command,
+								1, ptypes, pvalues, plengths, pformats,
+								0);
+	}
+	else if (param->fmt == FORMAT_TEXT)
+	{
+		pvalues[0] = data.data;
+
+		result = PQexecParams(conn,
+								param->command,
+								1, NULL, pvalues, NULL, NULL,
+								0);
+	}
+
+	status = PQresultStatus(result);
+
+	if (param->verbose)
+	{
+		fprintf(stdout, "Result status: %s\n", PQresStatus(status));
+	}
+
+	if (status != PGRES_TUPLES_OK && status != PGRES_COMMAND_OK)
+	{
+		fprintf(stderr, "%s: Unexpected result status: %s\n",
+				param->progname, PQresStatus(status));
+		fprintf(stderr, "%s: Error: %s\n",
+				param->progname, PQresultErrorMessage(result));
+		PQfinish(conn);
+		return -1;
+	}
+
+	PQclear(result);
+
+	termPQExpBuffer(&data);
 	PQfinish(conn);
 
 	return 0;
@@ -207,6 +297,7 @@ main(int argc, char **argv)
 	progname = get_progname(argv[0]);
 
 	/* Set default parameter values */
+	param.verbose = 0;
 	param.pg_user = NULL;
 	param.pg_prompt = TRI_DEFAULT;
 	param.fmt = FORMAT_TEXT;
