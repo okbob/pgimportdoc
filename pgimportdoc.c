@@ -270,7 +270,9 @@ pgimportdoc(const char *database, const struct _param * param)
 	if (ferror(input))
 	{
 		fprintf(stderr, "%s: Cannot read data '%s': %s\n",
-				param->progname, param->filename, strerror(errno));
+				param->progname,
+				param->filename ? param->filename : "stdin",
+				strerror(errno));
 		PQfinish(conn);
 		return -1;
 	}
