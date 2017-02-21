@@ -360,7 +360,7 @@ usage(const char *progname)
 	printf("  -?, --help     show this help, then exit\n");
 	printf("  -E ENCODING    import text data in encoding ENCODING\n");
 	printf("  -v             write a lot of progress messages\n");
-	printf("  -c COMMAND      INSERT, UPDATE command with parameter\n");
+	printf("  -c COMMAND     INSERT, UPDATE command with parameter\n");
 	printf("  -f NAME        file NAME of imported document, default is stdin\n");
 	printf("  -t TYPE        type specification [ XML | TEXT | BYTEA ], default is TEXT\n");
 	printf("\nConnection options:\n");
