@@ -51,6 +51,7 @@ struct _param
 	char	   *command;
 	bool		use_stdin;
 	char	   *filename;
+	char	   *encoding;
 };
 
 static void usage(const char *progname);
@@ -149,6 +150,42 @@ pgimportdoc(const char *database, const struct _param * param)
 			fprintf(stdout, "Import TEXT document\n");
 		else if (param->fmt == FORMAT_BYTEA)
 			fprintf(stdout, "Import BYTEA document\n");
+	}
+
+	if (param->encoding)
+	{
+		PQExpBufferData		setencoding;
+		PGresult		   *setencresult;
+
+		initPQExpBuffer(&setencoding);
+
+		appendPQExpBuffer(&setencoding, "SET client_encoding TO %s",
+						  param->encoding);
+
+		if (param->verbose)
+			fprintf(stdout, "execute command: %s\n", setencoding.data);
+
+		setencresult = PQexec(conn, setencoding.data);
+
+		status = PQresultStatus(setencresult);
+
+		if (param->verbose)
+		{
+			fprintf(stdout, "Set encoding result status: %s\n", PQresStatus(status));
+		}
+
+		if (status != PGRES_COMMAND_OK)
+		{
+			fprintf(stderr, "%s: Unexpected result status: %s\n",
+					param->progname, PQresStatus(status));
+			fprintf(stderr, "%s: Error: %s\n",
+					param->progname, PQresultErrorMessage(setencresult));
+			PQfinish(conn);
+			return -1;
+		}
+
+		PQclear(setencresult);
+		termPQExpBuffer(&setencoding);
 	}
 
 	if (param->use_stdin)
@@ -255,6 +292,20 @@ pgimportdoc(const char *database, const struct _param * param)
 		return -1;
 	}
 
+	/* print result when we have it */
+	if (status == PGRES_TUPLES_OK)
+	{
+		/* raise warning if more than expected tuples is returned */
+		if (PQntuples(result) > 1 || PQnfields(result) > 1)
+			fprintf(stderr, "pgimportdoc: warning: only first column of first row is displayed\n");
+
+		if (PQntuples(result) > 0)
+		{
+			if (!PQgetisnull(result, 0, 0))
+				fprintf(stdout, "%s\n", PQgetvalue(result, 0, 0));
+		}
+	}
+
 	PQclear(result);
 
 	termPQExpBuffer(&data);
@@ -271,10 +322,11 @@ usage(const char *progname)
 	printf("Options:\n");
 	printf("  -V, --version  output version information, then exit\n");
 	printf("  -?, --help     show this help, then exit\n");
+	printf("  -E ENCODING    import text data in encoding ENCODING\n");
 	printf("  -v             write a lot of progress messages\n");
-	printf("  -c sqlcmd      INSERT command with parameter\n");
-	printf("  -f file        file name of imported document, default is stdin\n");
-	printf("  -t type        type specification [ XML | TEXT | BYTEA ], default is TEXT\n");
+	printf("  -c COMMAND      INSERT, UPDATE command with parameter\n");
+	printf("  -f NAME        file NAME of imported document, default is stdin\n");
+	printf("  -t TYPE        type specification [ XML | TEXT | BYTEA ], default is TEXT\n");
 	printf("\nConnection options:\n");
 	printf("  -h HOSTNAME    database server host or socket directory\n");
 	printf("  -p PORT        database server port\n");
@@ -307,6 +359,7 @@ main(int argc, char **argv)
 	param.use_stdin = true;
 	param.filename = NULL;
 	param.command = NULL;
+	param.encoding = NULL;
 
 	/* Process command-line arguments */
 	if (argc > 1)
@@ -325,7 +378,7 @@ main(int argc, char **argv)
 
 	while (1)
 	{
-		c = getopt(argc, argv, "h:f:U:p:c:t:vwW");
+		c = getopt(argc, argv, "E:h:f:U:p:c:t:vwW");
 		if (c == -1)
 			break;
 
@@ -364,6 +417,9 @@ main(int argc, char **argv)
 					exit(1);
 				}
 				break;
+			case 'E':
+				param.encoding = pg_strdup(optarg);
+				break;
 			case 'U':
 				param.pg_user = pg_strdup(optarg);
 				break;
@@ -390,7 +446,7 @@ main(int argc, char **argv)
 
 	if (param.command == NULL)
 	{
-		fprintf(stderr, "pgimportdoc: missing required argument: -c command\n");
+		fprintf(stderr, "pgimportdoc: missing required argument: -c COMMAND\n");
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 		exit(1);
 	}
@@ -401,6 +457,11 @@ main(int argc, char **argv)
 		fprintf(stderr, "pgimportdoc: missing required argument: database name\n");
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 		exit(1);
+	}
+
+	if (param.encoding != NULL && param.fmt != FORMAT_TEXT)
+	{
+		fprintf(stderr, "pgimportdoc: warning: encoding is used only for type TEXT\n");
 	}
 
 	rc = pgimportdoc(argv[argc - 1], &param);

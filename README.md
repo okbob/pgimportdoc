@@ -29,13 +29,14 @@ ToDo:
 
 * More input files support - options -f1 xxx -f2 xxx ... insert into .. values( $1, $2 )
 * using LO API for passing binary data
-* show returned result when RETURNING clause is used
-* encoding option - possibility to specify encoding
 * regress tests
 
 Examples:
 
 ```
-[pavel@localhost pgimportdoc]$ ./pgimportdoc postgres -f ~/Stažené/enprimeur.xml -c 'insert into xmldata values($1)' -t XML
-[pavel@localhost pgimportdoc]$ cat ~/Stažené/enprimeur.xml | ./pgimportdoc postgres -c 'insert into xmldata values($1)' -t XML
+[pavel@localhost ]$ ./pgimportdoc postgres -f ~/Stažené/enprimeur.xml -c 'insert into xmldata values($1)' -t XML
+[pavel@localhost ]$ cat ~/Stažené/enprimeur.xml | ./pgimportdoc postgres -c 'insert into xmldata values($1)' -t XML
+[pavel@localhost ]$ cat ~/Stažené/enprimeur.xml | ./pgimportdoc postgres -E latin2 -c 'insert into doc values($1) returning id' -t TEXT
 ```
+
+Pavel Stehule, 2017 pavel.stehule@gmail.com Czech Republic, Prague
