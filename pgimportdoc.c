@@ -3,8 +3,10 @@
  * pgimportdoc.c
  *	  command line tool for import XML, JSON, BYTEA documents to PostgreSQL
  *
+ * Author: Pavel Stehule, 2017 - Czech Republic, Prague
+ *
  * IDENTIFICATION
- *   pgimportdoc.c
+ *   pgimportdoc.c 
  *
  *-------------------------------------------------------------------------
  */

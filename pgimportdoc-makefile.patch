@@ -1,0 +1,11 @@
+--- Makefile.old	2016-11-06 12:25:40.061022497 +0300
++++ Makefile	2016-11-06 12:25:58.523838674 +0300
+@@ -3,7 +3,7 @@
+ CC ?= gcc
+ CFLAGS = -std=gnu99 -O2 -Wall -pedantic
+ PREFIX ?= /usr
+-PGCONFIG ?= pg_config
++PGCONFIG ?= /usr/pgsql-9.6/bin/pg_config
+ PGLIBDIR = $(shell $(PGCONFIG) --libdir)
+ PGINCLUDEDIR = $(shell $(PGCONFIG) --includedir)
+ LIBS = -lncurses -lpq
