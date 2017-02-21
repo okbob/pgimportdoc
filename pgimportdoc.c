@@ -66,7 +66,6 @@ pgimportdoc(const char *database, const struct _param * param)
 	PGconn	   *conn;
 	bool		new_pass;
 	static bool have_password = false;
-	static char password[100];
 	FILE	   *input;
 	char		buffer[BUFSIZE];
 	size_t		size;
@@ -78,10 +77,32 @@ pgimportdoc(const char *database, const struct _param * param)
 	int			plengths[10];
 	ExecStatusType status;
 
+#if PG_VERSION_NUM >= 100000
+
+	static char password[100];
+
+#else
+
+	char	   *password = NULL;
+
+#endif
+
+
+
 	/* Note: password can be carried over from a previous call */
 	if (param->pg_prompt == TRI_YES && !have_password)
 	{
+
+#if PG_VERSION_NUM >= 100000
+
 		simple_prompt("Password: ", password, sizeof(password), false);
+
+#else
+
+		password = simple_prompt("Password: ", 100, false);
+
+#endif
+
 		have_password = true;
 	}
 
@@ -127,7 +148,20 @@ pgimportdoc(const char *database, const struct _param * param)
 			param->pg_prompt != TRI_NO)
 		{
 			PQfinish(conn);
+
+#if PG_VERSION_NUM >= 100000
+
 			simple_prompt("Password: ", password, sizeof(password), false);
+
+#else
+
+			if (password)
+				free(password);
+
+			password = simple_prompt("Password: ", 100, false);
+
+#endif
+
 			have_password = true;
 			new_pass = true;
 		}
@@ -240,7 +274,7 @@ pgimportdoc(const char *database, const struct _param * param)
 		PQfinish(conn);
 		return -1;
 	}
-	else if (PQExpBufferBroken(&data))
+	else if (PQExpBufferDataBroken(data))
 	{
 		fprintf(stderr, "%s: Out of memory\n",
 				param->progname);
