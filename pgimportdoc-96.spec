@@ -1,7 +1,7 @@
 %global pgmajorversion 96
 %global pgpackageversion 9.6
 %global pginstdir /usr/pgsql-%{pgpackageversion}
-%global sname	pgbconsole
+%global sname	pgimportdoc
 
 Summary:	command line tool for import XML, TEXT and BYTEA documents to PostgreSQL
 Name:		pgimportdoc
