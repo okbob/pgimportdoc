@@ -23,7 +23,15 @@
 #include "pg_getopt.h"
 #include "pqexpbuffer.h"
 
+#if PG_VERSION_NUM >= 110000
+
+#include "catalog/pg_type_d.h"
+
+#else
+
 #include "catalog/pg_type.h"
+
+#endif
 
 #define BUFSIZE			1024
 
